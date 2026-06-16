@@ -96,6 +96,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setCheckoutUrl(updatedCart.checkoutUrl);
         setIsCartOpen(true);
         showToast(`${product.name} added to basket`);
+      } else {
+        // Fallback for mock/custom variant IDs
+        const mockLineId = `mock-line-${product.variantId}`;
+        setLines(prevLines => {
+          const existingLineIdx = prevLines.findIndex(l => l.merchandise.id === product.variantId);
+          if (existingLineIdx > -1) {
+            const newLines = [...prevLines];
+            newLines[existingLineIdx] = {
+              ...newLines[existingLineIdx],
+              quantity: newLines[existingLineIdx].quantity + quantity
+            };
+            return newLines;
+          } else {
+            const newLine: ShopifyCartLine = {
+              id: mockLineId,
+              quantity: quantity,
+              merchandise: {
+                id: product.variantId!,
+                product: {
+                  handle: product.slug,
+                  title: product.name,
+                  images: { edges: [{ node: { url: product.images[0] } }] },
+                  priceRange: { minVariantPrice: { amount: product.price.toString() } }
+                }
+              }
+            };
+            return [...prevLines, newLine];
+          }
+        });
+        setIsCartOpen(true);
+        showToast(`${product.name} added to basket`);
       }
       setIsUpdating(false);
     },
@@ -105,10 +136,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const removeFromCart = useCallback(async (lineId: string) => {
     if (!cartId) return;
     setIsUpdating(true);
-    const updatedCart = await shopifyRemoveCartLine(cartId, lineId);
-    if (updatedCart) {
-      setLines(updatedCart.lines.edges.map((e: any) => e.node));
-      setCheckoutUrl(updatedCart.checkoutUrl);
+    if (lineId.startsWith("mock-line-")) {
+      setLines(prev => prev.filter(l => l.id !== lineId));
+    } else {
+      const updatedCart = await shopifyRemoveCartLine(cartId, lineId);
+      if (updatedCart) {
+        setLines(updatedCart.lines.edges.map((e: any) => e.node));
+        setCheckoutUrl(updatedCart.checkoutUrl);
+      }
     }
     setIsUpdating(false);
   }, [cartId]);
@@ -120,10 +155,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return removeFromCart(lineId);
       }
       setIsUpdating(true);
-      const updatedCart = await shopifyUpdateCartLine(cartId, lineId, quantity);
-      if (updatedCart) {
-        setLines(updatedCart.lines.edges.map((e: any) => e.node));
-        setCheckoutUrl(updatedCart.checkoutUrl);
+      if (lineId.startsWith("mock-line-")) {
+        setLines(prev => prev.map(l => l.id === lineId ? { ...l, quantity } : l));
+      } else {
+        const updatedCart = await shopifyUpdateCartLine(cartId, lineId, quantity);
+        if (updatedCart) {
+          setLines(updatedCart.lines.edges.map((e: any) => e.node));
+          setCheckoutUrl(updatedCart.checkoutUrl);
+        }
       }
       setIsUpdating(false);
     },
